@@ -1,5 +1,4 @@
 import { expect } from "@playwright/test";
-
 import { test } from "./lib/fixtures";
 
 test.describe("Change App Theme Test", () => {
@@ -55,9 +54,30 @@ test.describe("Change App Theme Test", () => {
     await page.waitForFunction(() => localStorage.getItem("app-theme") === "light");
 
     const systemTheme = await page.evaluate(() => {
-      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      if (window.matchMedia("(prefers-color-scheme: dark)").matches) return "dark";
+      return "light";
     });
     expect(await page.getAttribute("html", "class")).toContain(systemTheme);
+  });
+
+  test("toggle app theme from home page", async ({ page, users }) => {
+    const pro = await users.create();
+    await pro.apiLogin();
+
+    await page.goto("/event-types");
+    await page.evaluate(() => localStorage.setItem("app-theme", "light"));
+    await page.reload();
+
+    await expect(page.getByTestId("home-theme-toggle")).toBeVisible();
+    await expect(page.locator("html")).toHaveClass(/light/);
+
+    await page.getByTestId("home-theme-toggle").click();
+
+    await page.waitForFunction(() => localStorage.getItem("app-theme") === "dark");
+    await expect(page.locator("html")).toHaveClass(/dark/);
+
+    await page.reload();
+    await expect(page.locator("html")).toHaveClass(/dark/);
   });
 });
 
@@ -123,7 +143,8 @@ test.describe("Change Booking Page Theme Test", () => {
     await page.goto(`/${pro.username}`);
 
     const systemTheme = await page.evaluate(() => {
-      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      if (window.matchMedia("(prefers-color-scheme: dark)").matches) return "dark";
+      return "light";
     });
 
     expect(await page.getAttribute("html", "class")).toContain(systemTheme);
