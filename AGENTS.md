@@ -242,3 +242,32 @@ For detailed information, see the `agents/` directory:
 - **[agents/rules/](agents/rules/)** - Modular engineering rules
 - **[agents/commands.md](agents/commands.md)** - Complete command reference
 - **[agents/knowledge-base.md](agents/knowledge-base.md)** - Domain knowledge and business rules
+
+## Cursor Cloud specific instructions
+
+### Prerequisites
+
+Docker must be running before starting services. Start dockerd if not already running:
+```bash
+sudo dockerd &>/tmp/dockerd.log &
+sudo chmod 666 /var/run/docker.sock
+```
+
+Node.js 20 is required (matching the project's Dockerfile). Use `nvm use 20` if nvm manages multiple versions.
+
+### Starting services
+
+1. **PostgreSQL**: `cd packages/prisma && docker compose up -d` (port 5450). The `calendso` database must exist — create it with `docker exec prisma-postgres-1 psql -U postgres -c "CREATE DATABASE calendso;"` if starting from a fresh Docker volume.
+2. **Migrations + seed**: `yarn workspace @calcom/prisma db-deploy && yarn workspace @calcom/prisma db-seed`
+3. **Dev server**: `yarn dev` (port 3000)
+
+### Seeded test accounts
+
+The database seed creates users whose password equals their username. Key account: `pro@example.com` / `pro`.
+
+### Gotchas
+
+- The root `npx prisma db seed` fails because `ts-node` resolves `seed.ts` relative to the wrong directory. Use `yarn workspace @calcom/prisma db-seed` instead.
+- Biome lint will report many pre-existing warnings/errors in the codebase; this is expected. Focus on your diff.
+- `yarn type-check:ci --force` should be run before pushing (can take several minutes in this monorepo).
+- See `agents/commands.md` for the full command reference.
