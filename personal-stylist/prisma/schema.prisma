@@ -1,0 +1,173 @@
+// Personal Stylist — data model
+// Auth.js (NextAuth v5) standard models + stylist domain models.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Auth.js models (database sessions). The Account row holds the Google OAuth
+// access_token / refresh_token used to read Gmail for purchase scanning.
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+
+  accounts       Account[]
+  sessions       Session[]
+  profile        StyleProfile?
+  recommendations Recommendation[]
+  purchases      Purchase[]
+  emailScan      EmailScan?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------------------------------------------------------------------------
+// Stylist domain
+// ---------------------------------------------------------------------------
+
+// Everything the stylist needs to know about the user's taste and constraints.
+model StyleProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // { tops, bottoms, shoes, dress, outerwear, ... } free-form label -> value
+  sizes          Json    @default("{}")
+  fitPreferences String? // e.g. "relaxed up top, slim trousers"
+  favoriteColors String[] @default([])
+  styleTags      String[] @default([]) // minimal, classic, streetwear, ...
+  dislikes       String[] @default([])
+  // { default: {min,max}, shoes: {min,max}, ... } budget bands per category
+  budget         Json    @default("{}")
+  currency       String  @default("USD")
+  notes          String?
+
+  onboardedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// A generated set of recommendations — either an ongoing feed batch or a
+// one-off scenario ("Paris in April").
+model Recommendation {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  kind            String  @default("feed") // "feed" | "scenario"
+  title           String
+  rationale       String?
+  season          String?
+  scenarioPrompt  String?
+  scenarioContext Json?
+  status          String  @default("new") // "new" | "saved" | "dismissed"
+
+  items RecommendedItem[]
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, status])
+  @@index([userId, kind])
+}
+
+model RecommendedItem {
+  id               String  @id @default(cuid())
+  recommendationId String
+  recommendation   Recommendation @relation(fields: [recommendationId], references: [id], onDelete: Cascade)
+
+  name            String
+  category        String?
+  brandSuggestion String?
+  estimatedPrice  Float?
+  currency        String? @default("USD")
+  shoppingUrl     String
+  imageUrl        String?
+  whyItFits       String?
+  sortOrder       Int     @default(0)
+
+  @@index([recommendationId])
+}
+
+// A purchase inferred from the user's inbox. Feeds back into recommendations.
+model Purchase {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  source          String   @default("gmail")
+  retailer        String?
+  itemName        String
+  category        String?
+  price           Float?
+  currency        String?
+  purchasedAt     DateTime?
+  sourceMessageId String?
+  attributes      Json?   // { color, material, style } inferred by the model
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, sourceMessageId, itemName])
+  @@index([userId])
+}
+
+// Tracks the state of the inbox scan so we only process new mail.
+model EmailScan {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastScannedAt     DateTime?
+  status            String?  // "idle" | "running" | "error"
+  messagesProcessed Int      @default(0)
+  error             String?
+  updatedAt         DateTime @updatedAt
+}
